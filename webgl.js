@@ -1,15 +1,23 @@
-import { buffer_flame_data, render_flame, setPositionAttribute } from "./renderer.js";
+import { buffer_flame_data_color, render_flame } from "./renderer.js";
 
 let render_state = null;
 let buffer_state = null;
 
-const linear = {
-  weight: 1.0,
-  affine_coefs: { a: 0.5, b: 0.0, c: 0.0, d: 0.0, e: 0.0, f: 0.5, g: 0.0, h: 0.0, i: 0.0, j: 0.0, k: 0.5, l: 0.0 },
-  variations: [{f: 'linear', weight: 1.0}]
+const t1 = {
+  id: 'linear',
+  weight: 0.5,
+  affine_coefs: { a: 0.85, b: 0.04, c: 0.0, d: 0.0, e: -0.04, f: 0.85, g: 0.0, h: 1.6, i: 0.0, j: 0.0, k: 1.0, l: 0.0 },  variations: [{f: 'linear', weight: 1.0}],
 };
-const transform_data = [linear];
-const ITERATION_COUNT = 500000;
+
+const t2 = {
+  id: 'sin',
+  weight: 0.5,
+  affine_coefs: { a: 0.2, b: -0.26, c: 0.0, d: 0.0, e: 0.23, f: 0.22, g: 0.0, h: 0.8, i: 0.0, j: 0.0, k: 0.8, l: 0.0 }, 
+  variations: [{f: 'sinusoidal', weight: 1.0}],
+}; 
+
+const transform_data = [t1, t2];
+const ITERATION_COUNT = 5000000;
 
 window.addEventListener('DOMContentLoaded', main);
 
@@ -24,22 +32,24 @@ function main() {
     );
     return;
   }
-  // gl.clearColor(0.0, 0.0, 0.0, 1.0);
-  // gl.clear(gl.COLOR_BUFFER_BIT);
 
   const vertex_shader = `
     attribute vec3 aVertexPosition;
+    attribute vec3 aVertexColor;
     uniform mat4 uModelViewMatrix;
     uniform mat4 uProjectionMatrix;
+    varying lowp vec4 vColor; // pass color to frgmnt shader
     void main() {
       gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aVertexPosition, 1.0);
       gl_PointSize = 2.0;
+      vColor = vec4(aVertexColor, 0.6);
     }
   `;
 
   const frgmnt_shader = `
+    varying lowp vec4 vColor;
     void main() {
-      gl_FragColor = vec4(1.0, 0.5, 0.2, 0.8);
+      gl_FragColor = vColor;
     }
   `;
 
@@ -51,6 +61,7 @@ function main() {
     program: shader_program,
     attribLocations: {
       vertexPosition: gl.getAttribLocation(shader_program, "aVertexPosition"),
+      vertexColor: gl.getAttribLocation(shader_program, "aVertexColor"),
     },
     uniformLocations: {
       projectionMatrix: gl.getUniformLocation(shader_program, "uProjectionMatrix"),
@@ -74,7 +85,7 @@ function start_generation(transforms, iterations) {
   worker.onmessage = function(e) {
     if (e.data.type === 'complete') {
       const point_data = e.data.point_data;
-      buffer_state = buffer_flame_data(render_state.gl, point_data);
+      buffer_state = buffer_flame_data_color(render_state.gl, point_data);
       requestAnimationFrame(animate);
     }
   }

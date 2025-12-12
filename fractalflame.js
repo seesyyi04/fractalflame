@@ -1,5 +1,6 @@
 const variation_map = {
-	'linear' : linear
+	'linear' : linear,
+	'sinusoidal' : sinusoidal
 };
 
 const random_biunit_square = () => Math.random() * 2 - 1;
@@ -8,17 +9,34 @@ function linear(p) {
 	return {x: p.x, y: p.y, z: p.z};
 }
 
-function random_func_weighted(transforms) {
-	let total_weight = transforms.reduce((sum, t) => sum + t.weight, 0);
-	let random_val = Math.random() * total_weight;
-	let cumulative_weight = 0;
-
-	for (const t of transforms) {
-		cumulative_weight += t.weight;
-		if (random_val < cumulative_weight) {
-			return t;
-		}
+function sinusoidal(p) {
+	return {
+		x: Math.sin(p.x),
+		y: Math.sin(p.y),
+		z: Math.sin(p.z)
 	}
+}
+
+function random_func_weighted(transforms, current_point) {
+	// let weights = [];
+	let total_weight = 0;
+
+	// calculating weight for each transform
+	for (const t of transforms) {
+		total_weight += t.weight;
+	}
+	if (total_weight <= 0 || isNaN(total_weight)) {
+        return transforms[Math.floor(Math.random() * transforms.length)];
+    }
+
+	// select a transform based on new weights
+	let rand_val = Math.random() * total_weight;
+	let cumulative_weight = 0;
+	for (let i = 0; i < transforms.length; i++) {
+		cumulative_weight += transforms[i].weight;
+		if (rand_val < cumulative_weight) return transforms[i];
+	}
+
 	return transforms[transforms.length - 1];
 }
 
@@ -58,28 +76,108 @@ function apply_variation(point, variations) {
 }
 
 function chaos_game(transforms, num_iterations) {
+	// 3D histogram
+	const hist_W = 128;
+	const hist_H = 128;
+	const hist_D = 128;
+	const skip_points = 20;
+
 	let current_point = {
 		x: random_biunit_square(),
 		y: random_biunit_square(),
 		z: random_biunit_square()
 	}
-
-	const point_cloud_flat = [];
-	const skip_points = 20;
+	const histogram = new Float32Array(hist_W * hist_H * hist_D * 4).fill(0.0); // r, g, b count
+	const point_history = [];
 
 	for (let i = 0; i < num_iterations; i++) {
 		// select a weighted transform
-		const selected_transform = random_func_weighted(transforms);
+		const selected_transform = random_func_weighted(transforms, current_point);
 		// apply affine transformation
 		const intermediate = apply_affine(current_point, selected_transform.affine_coefs);
 		// apply weighted variations
 		current_point = apply_variation(intermediate, selected_transform.variations);
+
 		// only record after 20 points 
 		if (i > skip_points) {
-			point_cloud_flat.push(current_point.x, current_point.y, current_point.z);
+			point_history.push({...current_point}) // creates a shallow copy
+
+			// map coordinates (-1 to 1) to screen pixels (0 to width/height)
+			const x_norm = (current_point.x + 1.0) * 0.5;
+			const y_norm = (current_point.y + 1.0) * 0.5;
+			const z_norm = (current_point.z + 1.0) * 0.5;
+
+			const x_pixel = Math.min(hist_W - 1, Math.floor(x_norm * hist_W));
+			const y_pixel = Math.min(hist_H - 1, Math.floor(y_norm * hist_H));
+			const z_pixel = Math.min(hist_D - 1, Math.floor(z_norm * hist_D));
+
+			if (x_pixel >= 0 && y_pixel >= 0 && z_pixel >= 0) {
+				const index = ((z_pixel * hist_H + y_pixel) * hist_W + x_pixel) * 4; // determines starting pos in the flat 1D arr
+				
+				let r = 0.0, g = 0.0, b = 0.0;
+				if (selected_transform.id === 'linear') { r = 1.0, g = 0.9, b = 0.0; }
+				else if (selected_transform.id === 'sin') { r = 0.0, g = 0.8, b = 1.0; }
+
+				// accumulate color sums and increment count
+				histogram[index + 0] += r;
+				histogram[index + 1] += g;
+				histogram[index + 2] += b;
+				histogram[index + 3] += 1.0;
+			}
 		}
 	}
-	return point_cloud_flat;
+	// recalculating log-density parameters
+	let max_count = 0;
+	for (let i = 3; i < histogram.length; i+=4) {
+		if (histogram[i] > max_count) max_count = histogram[i];
+	}
+	if (max_count === 0) max_count = 1;
+	const log_max_count = Math.log10(max_count + 1);
+	const gamma = 1.0/2.2;
+	const point_cloud = []
+
+	const target_points = 150000;
+	const sample_rate = Math.max(1, Math.floor(point_history.length / target_points));
+
+	for (let i = 0; i < point_history.length; i+=sample_rate) {
+		const point = point_history[i];
+
+		// corresponding histogram data for this point's location
+		const x_norm = (point.x + 1.0) * 0.5;
+		const y_norm = (point.y + 1.0) * 0.5;
+		const z_norm = (point.z + 1.0) * 0.5;
+
+		const x_pixel = Math.min(hist_W - 1, Math.floor(x_norm * hist_W));
+		const y_pixel = Math.min(hist_H - 1, Math.floor(y_norm * hist_H));
+		const z_pixel = Math.min(hist_D - 1, Math.floor(z_norm * hist_D));
+
+		if (x_pixel >= 0 && y_pixel >= 0 && z_pixel >= 0) {
+			const index = ((z_pixel * hist_H + y_pixel) * hist_W + x_pixel) * 4;
+			const count = histogram[index + 3];
+	
+			if (count > 0) {
+				const log_density = Math.log10(count + 1);
+				let brightness = log_density / log_max_count;
+				brightness = Math.pow(brightness, gamma);
+	
+				// normalize r, g, b, sums by hit count
+				const r_avg = histogram[index + 0] / count;
+				const g_avg = histogram[index + 1] / count;
+				const b_avg = histogram[index + 2] / count;
+	
+				// final color = avg color * brightness (log density)
+				const r_final = r_avg * brightness;
+				const g_final = g_avg * brightness;
+				const b_final = b_avg * brightness;
+	
+				// x, y, z, r, g, b
+				point_cloud.push(point.x, point.y, point.z, r_final, g_final, b_final);
+				
+			}
+		}
+	}
+
+	return point_cloud;
 }
 
 // worker message handler

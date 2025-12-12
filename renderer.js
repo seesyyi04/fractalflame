@@ -2,37 +2,47 @@ import { mat4 } from 'https://cdn.jsdelivr.net/npm/gl-matrix@3.4.3/+esm';
 let rotation_angle = 0.0;
 
 // creates 3d points for the flames
-export function buffer_flame_data(gl, pointData) {
+export function buffer_flame_data_color(gl, pointData) {
 	// buffer for point positions
 	const buffer = gl.createBuffer();
 	gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-	const positions = new Float32Array(pointData);
+	const data = new Float32Array(pointData);
 	// upload data to GPU
-	gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+	gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
 
 	return {
 		buffer: buffer,
-		vertex_count: positions.length/3,
+		vertex_count: data.length/6,
 	};
 }
 
 // tell webgl how to pull out the positions from the position buffer into the vertexPosition attribute
-export function setPositionAttribute(gl, buffers, program_info) {
-	const numComponents = 3; // pull out 3 values per iteration
-	const type = gl.FLOAT; // 32 bit floats
-	const normalize = false; 
-	const stride = 0;
-	const offset = 0;
+export function setPositionandColorAttribute(gl, buffers, program_info) {
+	const FSIZE = Float32Array.BYTES_PER_ELEMENT;
+	const stride = FSIZE * 6;
+
+	// (x,y,z)
 	gl.bindBuffer(gl.ARRAY_BUFFER, buffers.buffer);
 	gl.vertexAttribPointer(
 		program_info.attribLocations.vertexPosition,
-		numComponents,
-		type,
-		normalize,
+		3, // num of components - x,y,z
+		gl.FLOAT,
+		false, // normalize
 		stride,
-		offset,
+		0, // offset: starts at the beginning
 	);
 	gl.enableVertexAttribArray(program_info.attribLocations.vertexPosition);
+
+	// (r,g,b)
+	gl.vertexAttribPointer(
+		program_info.attribLocations.vertexColor,
+		3, // num of components - r,g,b
+		gl.FLOAT,
+		false, // normalize
+		stride,
+		FSIZE * 3, // offset: starts after x,y,z
+	)
+	gl.enableVertexAttribArray(program_info.attribLocations.vertexColor);
 }
 
 export function render_flame(gl, program_info, buffers) {
@@ -63,7 +73,7 @@ export function render_flame(gl, program_info, buffers) {
 
 	// draw
 	// tell webgl how to pull out the positions from the position buffer into the vertexPosition attribute
-	setPositionAttribute(gl, buffers, program_info);
+	setPositionandColorAttribute(gl, buffers, program_info);
 	// tell webgl to use out program when drawing
 	gl.useProgram(program_info.program);
 	// set shader uniforms
