@@ -113,7 +113,7 @@ hr {
 
 .image-size {
     height: auto;
-    width: 300px;
+    width: 500px;
     border: 1px solid #FFA658;
     /* flex-shrink: 0; */
 }
@@ -188,4 +188,12 @@ button:hover {
     display: flex; 
     justify-content: flex-start;
     align-items: flex-start;
+}
+
+.pdf {
+    width: 70%; 
+    height: 800px; 
+    border: 1px solid #FFA658; 
+    display: block; 
+    margin: 10px; 
 }
