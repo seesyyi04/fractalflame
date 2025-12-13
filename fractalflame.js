@@ -1,24 +1,32 @@
-const variation_map = {
-	'linear' : linear,
-	'sinusoidal' : sinusoidal
+const variation_lib = {
+	'linear': function(p) {
+		return {x: p.x, y: p.y, z: p.z};
+	},
+	'sinusoidal': function(p) {
+		return {
+			x: Math.sin(p.x) * 3,
+			y: Math.sin(p.y) * 3,
+			z: Math.sin(p.z) * 3
+		}
+	},
+	'spherical': function(p) {
+		const r_sq = p.x * p.x + p.y * p.y + p.z * p.z + 0.001;
+		return {
+			x: p.x/r_sq,
+			y: p.y/r_sq,
+			z: p.z/r_sq,
+		}
+	},
+	// 'julia': function(p) {
+
+	// }
 };
+
+let variation_map = {};
 
 const random_biunit_square = () => Math.random() * 2 - 1;
 
-function linear(p) {
-	return {x: p.x, y: p.y, z: p.z};
-}
-
-function sinusoidal(p) {
-	return {
-		x: Math.sin(p.x),
-		y: Math.sin(p.y),
-		z: Math.sin(p.z)
-	}
-}
-
-function random_func_weighted(transforms, current_point) {
-	// let weights = [];
+function random_func_weighted(transforms) {
 	let total_weight = 0;
 
 	// calculating weight for each transform
@@ -77,9 +85,10 @@ function apply_variation(point, variations) {
 
 function chaos_game(transforms, num_iterations) {
 	// 3D histogram
-	const hist_W = 128;
-	const hist_H = 128;
-	const hist_D = 128;
+	const res = 256;
+	const hist_W = res;
+	const hist_H = res;
+	const hist_D = res;
 	const skip_points = 20;
 
 	let current_point = {
@@ -92,7 +101,7 @@ function chaos_game(transforms, num_iterations) {
 
 	for (let i = 0; i < num_iterations; i++) {
 		// select a weighted transform
-		const selected_transform = random_func_weighted(transforms, current_point);
+		const selected_transform = random_func_weighted(transforms);
 		// apply affine transformation
 		const intermediate = apply_affine(current_point, selected_transform.affine_coefs);
 		// apply weighted variations
@@ -115,8 +124,11 @@ function chaos_game(transforms, num_iterations) {
 				const index = ((z_pixel * hist_H + y_pixel) * hist_W + x_pixel) * 4; // determines starting pos in the flat 1D arr
 				
 				let r = 0.0, g = 0.0, b = 0.0;
-				if (selected_transform.id === 'linear') { r = 1.0, g = 0.9, b = 0.0; }
-				else if (selected_transform.id === 'sin') { r = 0.0, g = 0.8, b = 1.0; }
+				if (selected_transform.id.includes('fern')) { 
+					r = 1.0; g = 0.65; b = 0.0; 
+				} else if (selected_transform.id.includes('curl')) { 
+					r = 0.61; g = 0.39; b = 0.55; 
+				} 
 
 				// accumulate color sums and increment count
 				histogram[index + 0] += r;
@@ -160,7 +172,7 @@ function chaos_game(transforms, num_iterations) {
 				let brightness = log_density / log_max_count;
 				brightness = Math.pow(brightness, gamma);
 	
-				// normalize r, g, b, sums by hit count
+				// average r, g, b, sums by hit count
 				const r_avg = histogram[index + 0] / count;
 				const g_avg = histogram[index + 1] / count;
 				const b_avg = histogram[index + 2] / count;
@@ -183,6 +195,14 @@ function chaos_game(transforms, num_iterations) {
 // worker message handler
 self.onmessage = function(e) {
 	if (e.data.type === 'start') {
+		const available_variations = e.data.available_variations || ['linear'];
+		variation_map = {};
+		for (const v of available_variations) {
+			if (variation_lib[v]) {
+				variation_map[v] = variation_lib[v];
+			}
+		}
+
 		const point_data = chaos_game(e.data.transforms, e.data.iterations);
 		self.postMessage({
 			type: 'complete',

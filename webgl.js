@@ -2,22 +2,30 @@ import { buffer_flame_data_color, render_flame } from "./renderer.js";
 
 let render_state = null;
 let buffer_state = null;
+let current_worker = null;
+let animate_id = null;
 
-const t1 = {
-  id: 'linear',
-  weight: 0.5,
-  affine_coefs: { a: 0.85, b: 0.04, c: 0.0, d: 0.0, e: -0.04, f: 0.85, g: 0.0, h: 1.6, i: 0.0, j: 0.0, k: 1.0, l: 0.0 },  variations: [{f: 'linear', weight: 1.0}],
-};
+const all_variations = ['linear', 'sinusoidal', 'spherical'];
+let selected_variations = ['linear'];
 
-const t2 = {
-  id: 'sin',
-  weight: 0.5,
-  affine_coefs: { a: 0.2, b: -0.26, c: 0.0, d: 0.0, e: 0.23, f: 0.22, g: 0.0, h: 0.8, i: 0.0, j: 0.0, k: 0.8, l: 0.0 }, 
-  variations: [{f: 'sinusoidal', weight: 1.0}],
-}; 
+function transform_lib() {
+  return [
+    {
+      id: 'fern', // barnsley fern
+      weight: 0.5,
+      affine_coefs: { a: 0.85, b: 0.04, c: 0.0, d: 0.0, e: -0.04, f: 0.85, g: 0.0, h: 1.6, i: 0.0, j: 0.0, k: 1.0, l: 0.0 },
+      variations: [{f: selected_variations[0], weight: 1.0}],
+    },
+    {
+      id: 'curl',
+      weight: 0.5,
+      affine_coefs: { a: 0.2, b: -0.26, c: 0.0, d: 0.0, e: 0.23, f: 0.22, g: 0.0, h: 0.8, i: 0.0, j: 0.0, k: 0.8, l: 0.0 }, 
+      variations: [{f: selected_variations[1] || 'sinusoidal', weight: 1.0}],
+    }
+  ]
+}
 
-const transform_data = [t1, t2];
-const ITERATION_COUNT = 5000000;
+const ITERATION_COUNT = 1000000;
 
 window.addEventListener('DOMContentLoaded', main);
 
@@ -27,18 +35,18 @@ function main() {
   const gl = canvas.getContext("webgl");
   console.log('WebGL context:', gl);
   if (gl === null) {
-    alert(
-      "Unable to initialize WebGL. Your browser or machine may not support it.",
-    );
+    alert("Unable to initialize WebGL. Your browser or machine may not support it.");
     return;
   }
+
+  variation_controls();
 
   const vertex_shader = `
     attribute vec3 aVertexPosition;
     attribute vec3 aVertexColor;
     uniform mat4 uModelViewMatrix;
     uniform mat4 uProjectionMatrix;
-    varying lowp vec4 vColor; // pass color to frgmnt shader
+    varying lowp vec4 vColor; 
     void main() {
       gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aVertexPosition, 1.0);
       gl_PointSize = 2.0;
@@ -75,24 +83,69 @@ function main() {
   gl.clearColor(0.0, 0.0, 0.0, 1.0);
   gl.viewport(0,0,canvas.width, canvas.height);
   gl.clear(gl.COLOR_BUFFER_BIT);
-  console.log('About to call start_generation');
-  start_generation(transform_data, ITERATION_COUNT);
-  console.log('start_generation called');
+  start_generation(transform_lib(), ITERATION_COUNT, selected_variations);
 }
 
-function start_generation(transforms, iterations) {
+function variation_controls() {
+  const checkboxesDiv = document.getElementById('variation-checkboxes');
+  checkboxesDiv.innerHTML = ' ';
+
+  all_variations.forEach(variation => {
+    const div = document.createElement('div');
+    div.className = 'variation-option';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = `var-${variation}`;
+    checkbox.value = variation;
+    checkbox.checked = selected_variations.includes(variation);
+
+    checkbox.addEventListener('change', function () {
+      if (this.checked && !selected_variations.includes(this.value)) {
+        selected_variations.push(this.value);
+      } else if (!this.checked) {
+        selected_variations = selected_variations.filter(v => v !== this.value);
+      }
+    });
+    const label = document.createElement('label');
+    label.htmlFor = `var-${variation}`;
+    label.textContent = variation;
+    label.style.marginLeft = '5px';
+    label.style.cursor = 'pointer';
+    div.appendChild(checkbox);
+    div.appendChild(label);
+    checkboxesDiv.appendChild(div);
+  });
+
+  // regenerate button
+  document.getElementById('regenerate-btn').addEventListener('click', () => {
+    if (selected_variations.length < 1) {
+      alert('Please select at least 1 variation'); return;
+    }
+    if (current_worker) current_worker.terminate();
+    start_generation(transform_lib(), ITERATION_COUNT, selected_variations);
+  })
+}
+
+function start_generation(transforms, iterations, available_variations) {
+  if(animate_id) {
+    cancelAnimationFrame(animate_id);
+    animate_id = null;
+  }
+  
   const worker = new Worker('./fractalflame.js');
   worker.onmessage = function(e) {
     if (e.data.type === 'complete') {
       const point_data = e.data.point_data;
       buffer_state = buffer_flame_data_color(render_state.gl, point_data);
-      requestAnimationFrame(animate);
+      animate();
     }
   }
   worker.postMessage({
     type: 'start',
     transforms: transforms,
-    iterations: iterations
+    iterations: iterations,
+    available_variations: available_variations
   });
 }
 
@@ -100,7 +153,7 @@ function animate() {
   if (buffer_state) {
     render_flame(render_state.gl, render_state, buffer_state);
   }
-  requestAnimationFrame(animate);
+  animate_id = requestAnimationFrame(animate);
 }
 
 function initShader(gl, vs, fs) {
