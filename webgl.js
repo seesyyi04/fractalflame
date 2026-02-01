@@ -4,6 +4,7 @@ let render_state = null;
 let buffer_state = null;
 let current_worker = null;
 let animate_id = null;
+let is_paused = false;
 
 const all_variations = ['linear', 'sinusoidal', 'spherical'];
 let selected_variations = ['linear'];
@@ -25,12 +26,19 @@ function transform_lib() {
   ]
 }
 
-const ITERATION_COUNT = 1000000;
+const ITERATION_COUNT = 5000000;
 
 window.addEventListener('DOMContentLoaded', main);
+window.addEventListener('resize', () => {
+  const cv = document.querySelector("#glcanvas");
+  cv.width = window.innerWidth * 0.8;
+  cv.height = window.innerHeight * 0.8;
+});
 
 function main() {
   const canvas = document.querySelector("#glcanvas");
+  canvas.width = window.innerWidth * 0.80;
+  canvas.height = window.innerHeight * 0.80;
   // Initialize the GL context
   const gl = canvas.getContext("webgl");
   console.log('WebGL context:', gl);
@@ -46,11 +54,18 @@ function main() {
     attribute vec3 aVertexColor;
     uniform mat4 uModelViewMatrix;
     uniform mat4 uProjectionMatrix;
-    varying lowp vec4 vColor; 
+    varying lowp vec4 vColor;
+
     void main() {
-      gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aVertexPosition, 1.0);
-      gl_PointSize = 2.0;
-      vColor = vec4(aVertexColor, 0.6);
+      vec4 mvPosition = uModelViewMatrix * vec4(aVertexPosition, 1.0);
+
+      // size of points
+      gl_Position = uProjectionMatrix * mvPosition;
+      gl_PointSize = 5.26 / -mvPosition.z;
+
+      // depth fading
+      float fade = clamp(5.0 / -mvPosition.z, 0.75, 1.25);
+      vColor = vec4(aVertexColor * fade, 0.6);
     }
   `;
 
@@ -81,14 +96,14 @@ function main() {
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
   gl.clearColor(0.0, 0.0, 0.0, 1.0);
-  gl.viewport(0,0,canvas.width, canvas.height);
+  // gl.viewport(0,0,canvas.width, canvas.height);
   gl.clear(gl.COLOR_BUFFER_BIT);
   start_generation(transform_lib(), ITERATION_COUNT, selected_variations);
 }
 
 function variation_controls() {
   const checkboxesDiv = document.getElementById('variation-checkboxes');
-  checkboxesDiv.innerHTML = ' ';
+  checkboxesDiv.innerHTML = '';
 
   all_variations.forEach(variation => {
     const div = document.createElement('div');
@@ -100,7 +115,7 @@ function variation_controls() {
     checkbox.value = variation;
     checkbox.checked = selected_variations.includes(variation);
 
-    checkbox.addEventListener('change', function () {
+    checkbox.addEventListener('change', function() {
       if (this.checked && !selected_variations.includes(this.value)) {
         selected_variations.push(this.value);
       } else if (!this.checked) {
@@ -115,6 +130,15 @@ function variation_controls() {
     div.appendChild(checkbox);
     div.appendChild(label);
     checkboxesDiv.appendChild(div);
+  });
+
+  // pause
+  const pause_check = document.getElementById('pause-animation');
+  pause_check.addEventListener('change', function() {
+    is_paused = this.checked;
+    if (current_worker) {
+      current_worker.postMessage({ type: is_paused ? 'pause' : 'resume' });
+    }
   });
 
   // regenerate button
@@ -150,7 +174,9 @@ function start_generation(transforms, iterations, available_variations) {
 }
 
 function animate() {
-  if (buffer_state) {
+  if (!is_paused && buffer_state) {
+    const gl = render_state.gl;
+    gl.viewport(0,0, gl.canvas.width, gl.canvas.height);
     render_flame(render_state.gl, render_state, buffer_state);
   }
   animate_id = requestAnimationFrame(animate);

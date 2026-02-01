@@ -53,7 +53,7 @@ export function render_flame(gl, program_info, buffers) {
 	const fov = (45 * Math.PI) / 180; // radians (45 degrees)
 	const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
 	const zNear = 0.1;
-	const zFar = 100.0;
+	const zFar = 1000.0;
 	const projection_matrix = mat4.create();
 	// note: glMatrix always has the first argument as the destination to receive the result
 	mat4.perspective(projection_matrix, fov, aspect, zNear, zFar);
@@ -64,7 +64,7 @@ export function render_flame(gl, program_info, buffers) {
 	mat4.translate(
 		model_view_mat, // destination matrix
 		model_view_mat, // matrix to translate
-		[-0.0, 0.0, -6.0], // amount to translate
+		[0.0, 0.0, -5.0], // amount to translate
 	);
 	// continuous rotation
 	rotation_angle += 0.01;

@@ -6,13 +6,13 @@
 
 html {
     font-family: baskerville;
-    font-size: 24px;
+    font-size: 20px;
     scroll-behavior: smooth;
 } 
 
 canvas {
     display: block; 
-    margin: 50px; 
+    margin: 30px; 
 }
 
 body {
@@ -39,7 +39,7 @@ a {
 
 h1 {
     color: white;
-    font-size: 35px;
+    font-size: 40px;
     letter-spacing: 0.25em;
     text-align: left;
     padding: 50px 30px;
@@ -151,7 +151,7 @@ hr {
 
 #controls {
     /* position: absolute; */
-    margin-top: 50px;
+    margin-top: 30px;
     background: rgba(0, 0, 0, 0.7);
     color: white;
     padding: 15px;

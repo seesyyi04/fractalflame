@@ -77,7 +77,7 @@ function apply_variation(point, variations) {
 	}
 
 	if (total_weight > 0) {
-		return {x: x_sum / total_weight, y: y_sum / total_weight, z: z_sum / total_weight};
+		return {x: x_sum, y: y_sum, z: z_sum};
 	} else {
 		return point;
 	}
@@ -90,11 +90,12 @@ function chaos_game(transforms, num_iterations) {
 	const hist_H = res;
 	const hist_D = res;
 	const skip_points = 20;
+	const range = res, offset = res / 2;
 
 	let current_point = {
-		x: random_biunit_square(),
-		y: random_biunit_square(),
-		z: random_biunit_square()
+		x: random_biunit_square() * offset,
+		y: random_biunit_square() * offset,
+		z: random_biunit_square() * offset
 	}
 	const histogram = new Float32Array(hist_W * hist_H * hist_D * 4).fill(0.0); // r, g, b count
 	const point_history = [];
@@ -112,15 +113,17 @@ function chaos_game(transforms, num_iterations) {
 			point_history.push({...current_point}) // creates a shallow copy
 
 			// map coordinates (-1 to 1) to screen pixels (0 to width/height)
-			const x_norm = (current_point.x + 1.0) * 0.5;
-			const y_norm = (current_point.y + 1.0) * 0.5;
-			const z_norm = (current_point.z + 1.0) * 0.5;
+			const x_norm = (current_point.x + offset) / range;
+			const y_norm = (current_point.y + offset) / range;
+			const z_norm = (current_point.z + offset) / range;
 
-			const x_pixel = Math.min(hist_W - 1, Math.floor(x_norm * hist_W));
-			const y_pixel = Math.min(hist_H - 1, Math.floor(y_norm * hist_H));
-			const z_pixel = Math.min(hist_D - 1, Math.floor(z_norm * hist_D));
+			const x_pixel = Math.floor(x_norm * hist_W);
+			const y_pixel = Math.floor(y_norm * hist_H);
+			const z_pixel = Math.floor(z_norm * hist_D);
 
-			if (x_pixel >= 0 && y_pixel >= 0 && z_pixel >= 0) {
+			if (x_pixel >= 0 && x_pixel < hist_W &&
+				y_pixel >= 0 && y_pixel < hist_H &&
+				z_pixel >= 0 && z_pixel < hist_D) {
 				const index = ((z_pixel * hist_H + y_pixel) * hist_W + x_pixel) * 4; // determines starting pos in the flat 1D arr
 				
 				let r = 0.0, g = 0.0, b = 0.0;
@@ -148,22 +151,24 @@ function chaos_game(transforms, num_iterations) {
 	const gamma = 1.0/2.2;
 	const point_cloud = []
 
-	const target_points = 150000;
+	const target_points = 1000000;
 	const sample_rate = Math.max(1, Math.floor(point_history.length / target_points));
 
 	for (let i = 0; i < point_history.length; i+=sample_rate) {
 		const point = point_history[i];
 
 		// corresponding histogram data for this point's location
-		const x_norm = (point.x + 1.0) * 0.5;
-		const y_norm = (point.y + 1.0) * 0.5;
-		const z_norm = (point.z + 1.0) * 0.5;
+		const x_norm = (point.x + offset) / range;
+		const y_norm = (point.y + offset) / range;
+		const z_norm = (point.z + offset) / range;
 
-		const x_pixel = Math.min(hist_W - 1, Math.floor(x_norm * hist_W));
-		const y_pixel = Math.min(hist_H - 1, Math.floor(y_norm * hist_H));
-		const z_pixel = Math.min(hist_D - 1, Math.floor(z_norm * hist_D));
+		const x_pixel = Math.floor(x_norm * hist_W);
+		const y_pixel = Math.floor(y_norm * hist_H);
+		const z_pixel = Math.floor(z_norm * hist_D);
 
-		if (x_pixel >= 0 && y_pixel >= 0 && z_pixel >= 0) {
+		if (x_pixel >= 0 && x_pixel < hist_W &&
+			y_pixel >= 0 && y_pixel < hist_H &&
+			z_pixel >= 0 && z_pixel < hist_D) {
 			const index = ((z_pixel * hist_H + y_pixel) * hist_W + x_pixel) * 4;
 			const count = histogram[index + 3];
 	
